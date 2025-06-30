@@ -1,0 +1,23 @@
+# Entornos virtuales
+env/
+venv/
+
+# Archivos Python compilados
+__pycache__/
+*.py[cod]
+
+# Archivos de base de datos
+*.sqlite3
+
+# Configuración de entorno
+.env
+
+# Archivos del sistema
+*.log
+*.pot
+*.pyc
+.DS_Store
+
+# Archivos de migración
+*/migrations/__pycache__/
+*.pyc
