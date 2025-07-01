@@ -9,6 +9,8 @@ from .models import (
     DetalleEnvio, DetallePago, Etiqueta, GrupoCategoria, SubCategoria, Favoritos
 )
 from . import models
+from rest_framework.exceptions import AuthenticationFailed
+
 
 User = get_user_model()
 
@@ -51,6 +53,54 @@ class ProductoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Producto
         fields = '__all__'
+
+
+class CustomAuthTokenSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField()
+
+    def validate(self, data):
+        email = data.get('email')
+        password = data.get('password')
+
+        # Verificar si el usuario existe por email
+        User = get_user_model()
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise AuthenticationFailed("El correo electrónico no existe.")
+
+        # Validar la contraseña
+        if not user.check_password(password):
+            raise AuthenticationFailed("Contraseña incorrecta.")
+
+        return {'user': user}
+
+# Registro
+class RegistroSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+    is_superuser = serializers.BooleanField(default=False)  # Puedes eliminarlo si no lo vas a pasar en el registro.
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password', 'is_superuser']
+
+    def validate(self, data):
+        if not data.get('username'):
+            raise ValidationError("El nombre de usuario es obligatorio.")
+        if not data.get('email'):
+            raise ValidationError("El correo electrónico es obligatorio.")
+        return data
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        user = User.objects.create_user(**validated_data)  # Crea el usuario normal
+
+        user.set_password(password)
+        user.save()
+
+        return user
+
 
 
 #USUARIO

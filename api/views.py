@@ -20,14 +20,21 @@ from .models import (
 from .serializers import (
     DepartamentoSerializer, ProvinciaSerializer, DistritoSerializer,
     CategoriaSerializer, ProductoSerializer,
-    ClienteSerializer, PedidoSerializer, EtiquetaSerializer, GrupoCategoriaSerializer, SubCategoriaSerializer, FavoritosSerializer
+    ClienteSerializer, PedidoSerializer, EtiquetaSerializer, 
+    GrupoCategoriaSerializer, SubCategoriaSerializer, FavoritosSerializer, RegistroSerializer,
+    CustomAuthTokenSerializer
 )
+from rest_framework import status, permissions
+from rest_framework.views import APIView
+
 
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from .models import Favoritos
+from django.contrib.auth import authenticate
+
 
 class FavoritosViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
@@ -85,17 +92,20 @@ class UsuarioViewset(viewsets.ModelViewSet):
     queryset = models.Usuario.objects.all()
     serializer_class = serializers.UsuarioSerializer
 
-class CustomAuthToken(ObtainAuthToken):
+class CustomAuthToken(APIView):
     def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data, context={'request':request})
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']
-        token, created = Token.objects.get_or_create(user=user)
-        return Response({
-            'token': token.key,
-            'user_id': user.pk,
-            'username': user.username
-        })
+        serializer = CustomAuthTokenSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({
+                'token': token.key,
+                'user_id': user.id,
+                'email': user.email,
+                'username': user.username
+            })
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['POST'])
 def realizar_pedido(request):
@@ -181,6 +191,57 @@ class PedidoViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Aquí asignas el usuario autenticado al crear el pedido
         serializer.save()
+
+
+class RegistroUsuarioView(APIView):
+    permission_classes = [AllowAny]  # Permitir a cualquier usuario acceder
+
+    def post(self, request, *args, **kwargs):
+        serializer = RegistroSerializer(data=request.data)
+
+        if serializer.is_valid():
+            user = serializer.save()
+
+            # Generar el token de autenticación para el nuevo usuario
+            token = Token.objects.create(user=user)
+
+            # Devolvemos el token y los datos del usuario (user_id y username)
+            return Response({
+                "message": "Usuario creado con éxito",
+                "usuario": {
+                    "username": user.username,
+                    "email": user.email,
+                    "user_id": user.id
+                },
+                "token": token.key  # Este es el token que se usará para las peticiones futuras
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class LoginUsuarioView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = [TokenAuthentication]  # Si es necesario para la autenticación
+
+    def post(self, request):
+        email = request.data.get('email')
+        password = request.data.get('password')
+
+        if not email or not password:
+            return Response({'detail': 'Email y contraseña son requeridos.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Autenticación usando email y password
+        user = authenticate(request, username=email, password=password)
+
+        if user is not None:
+            # El usuario se autentica correctamente
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({
+                'token': token.key,
+                'user_id': user.id,
+                'username': user.username
+            }, status=status.HTTP_200_OK)
+
+        return Response({'detail': 'Credenciales incorrectas.'}, status=status.HTTP_400_BAD_REQUEST)
 
 # OPENAI
 from django.http import JsonResponse
