@@ -86,15 +86,34 @@ class UsuarioViewset(viewsets.ModelViewSet):
     queryset = models.Usuario.objects.all()
     serializer_class = serializers.UsuarioSerializer
 
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
 class CustomAuthToken(ObtainAuthToken):
+
     def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data, context={'request':request})
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']
+        email = request.data.get('email')
+        password = request.data.get('password')
+
+        if not email or not password:
+            return Response({'error': 'Se requieren email y contraseña'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({'error': 'Email o contraseña incorrectos'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(password):
+            return Response({'error': 'Email o contraseña incorrectos'}, status=status.HTTP_400_BAD_REQUEST)
+
         token, created = Token.objects.get_or_create(user=user)
+
         return Response({
             'token': token.key,
             'user_id': user.pk,
+            'email': user.email,
             'username': user.username
         })
 
@@ -287,7 +306,7 @@ import re
 from .models import Producto, Categoria, SubCategoria, Etiqueta, Pedido, DetallePedido, GrupoCategoria
 from datetime import datetime
 # API key de OpenAI
-api_key = ''
+api_key = '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'
 os.environ['OPENAI_API_KEY'] = api_key
 cliente_openai = OpenAI()
 

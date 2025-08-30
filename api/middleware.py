@@ -7,7 +7,7 @@ class APIKeyMiddleware:
         # Rutas que NO requieren API Key
         self.exclude_paths = [
             '/api/productos/',
-            '/api/grupo-categorias/',
+            '/api/grupocategorias/',
             '/api/categorias/',
             '/api/subcategorias/',
 

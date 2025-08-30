@@ -48,6 +48,7 @@ class SubCategoriaSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class ProductoSerializer(serializers.ModelSerializer):
+    precio = serializers.FloatField()
     class Meta:
         model = Producto
         fields = '__all__'
@@ -83,6 +84,7 @@ class FavoritosSerializer(serializers.ModelSerializer):
         model = Favoritos
         fields = ['usuario', 'idsProductos']
 class PromocionSerializer(serializers.ModelSerializer):
+    precioPromocion = serializers.FloatField()
     class Meta:
         model = models.Promocion
         fields = "__all__"
