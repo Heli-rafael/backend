@@ -14,27 +14,21 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import (
     Departamento, Provincia, Distrito,
     Categoria, Producto,
-    Cliente, Pedido, DetallePedido, GrupoCategoria, SubCategoria, Etiqueta, Favoritos
+    Cliente, Pedido, DetallePedido, GrupoCategoria, SubCategoria, Etiqueta, Favoritos,Promocion
 )
 
 from .serializers import (
     DepartamentoSerializer, ProvinciaSerializer, DistritoSerializer,
     CategoriaSerializer, ProductoSerializer,
-    ClienteSerializer, PedidoSerializer, EtiquetaSerializer, 
-    GrupoCategoriaSerializer, SubCategoriaSerializer, FavoritosSerializer, RegistroSerializer,
-    CustomAuthTokenSerializer
+    ClienteSerializer, PedidoSerializer, EtiquetaSerializer, GrupoCategoriaSerializer, SubCategoriaSerializer, 
+    FavoritosSerializer, PromocionSerializer
 )
-from rest_framework import status, permissions
-from rest_framework.views import APIView
-
 
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from .models import Favoritos
-from django.contrib.auth import authenticate
-
 
 class FavoritosViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
@@ -92,20 +86,17 @@ class UsuarioViewset(viewsets.ModelViewSet):
     queryset = models.Usuario.objects.all()
     serializer_class = serializers.UsuarioSerializer
 
-class CustomAuthToken(APIView):
+class CustomAuthToken(ObtainAuthToken):
     def post(self, request, *args, **kwargs):
-        serializer = CustomAuthTokenSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.validated_data['user']
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({
-                'token': token.key,
-                'user_id': user.id,
-                'email': user.email,
-                'username': user.username
-            })
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+        serializer = self.serializer_class(data=request.data, context={'request':request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.validated_data['user']
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({
+            'token': token.key,
+            'user_id': user.pk,
+            'username': user.username
+        })
 
 @api_view(['POST'])
 def realizar_pedido(request):
@@ -180,68 +171,110 @@ class ClienteViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # filtrar para que solo vea los clientes del usuario autenticado
         return Cliente.objects.filter(usuario=self.request.user)
+    
 
 
+from django.utils import timezone
+class PromocionViewSet(viewsets.ModelViewSet):
+    queryset = Promocion.objects.all()
+    serializer_class = PromocionSerializer
+    permission_classes = [IsAuthenticated]
+    permission_classes = []
+
+    # Obtener todas las promociones
+    def get_queryset(self):
+        return Promocion.objects.all()
+
+    # Acción personalizada para obtener las promociones vigentes
+    @action(detail=False, methods=['get'], url_path='vigentes')
+    def promociones_vigentes(self, request):
+        """ Endpoint para obtener solo las promociones activas """
+        promociones_activas = Promocion.objects.filter(fechaInicio__lte=timezone.now(), fechaFin__gte=timezone.now())
+        serializer = self.get_serializer(promociones_activas, many=True)
+        return Response(serializer.data)
+    
+import json
+from rest_framework import viewsets, status
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.views import APIView
+
+from .models import Pedido
+from .serializers import PedidoSerializer
+class PedidoCreateView(APIView):
+    def post(self, request, *args, **kwargs):
+        pedido_data = request.data.get("pedido")
+        voucher = request.FILES.get("voucher")
+
+        if pedido_data:
+            import json
+            pedido_data = json.loads(pedido_data)
+
+        serializer = PedidoSerializer(data=pedido_data)
+        if serializer.is_valid():
+            pedido = serializer.save()
+            if voucher:
+                pedido.voucher = voucher
+                pedido.save()
+            return Response(PedidoSerializer(pedido).data, status=201)
+        return Response(serializer.errors, status=400)
+    
 class PedidoViewSet(viewsets.ModelViewSet):
     queryset = Pedido.objects.all()
     serializer_class = PedidoSerializer
-    permission_classes = [IsAuthenticated]  # Exigir autenticación
-    authentication_classes = [TokenAuthentication]  # Usar token auth
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [TokenAuthentication]
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
+
+    def create(self, request, *args, **kwargs):
+        """
+        Soporta:
+        - JSON puro (application/json): body = {cliente, detalle_envio, detalle_pago, detalle_pedido, total, ...}
+        - multipart/form-data: fields:
+            - pedido: string JSON con la estructura anterior
+            - voucher: archivo opcional
+        """
+        if 'pedido' in request.data:
+            # Caso multipart con JSON + file
+            try:
+                payload = json.loads(request.data['pedido'])
+            except json.JSONDecodeError:
+                return Response({'detail': 'pedido inválido (JSON mal formado).'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Si vino voucher, incrustarlo en detalle_pago
+            voucher_file = request.FILES.get('voucher')
+            if voucher_file:
+                if 'detalle_pago' not in payload or payload['detalle_pago'] is None:
+                    payload['detalle_pago'] = {}
+                payload['detalle_pago']['voucher'] = voucher_file
+
+            serializer = self.get_serializer(data=payload)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+        # Caso JSON puro
+        return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        # Aquí asignas el usuario autenticado al crear el pedido
         serializer.save()
 
+class PruebaView(viewsets.ModelViewSet):
 
-class RegistroUsuarioView(APIView):
-    permission_classes = [AllowAny]  # Permitir a cualquier usuario acceder
+    queryset = models.Prueba.objects.all()
+    serializer_class = serializers.PruebaSerializer
+    permission_classes = [IsAuthenticated]  # Exigir autenticación
+    authentication_classes = [TokenAuthentication]  # Usar token auth
+    permission_classes = []
 
-    def post(self, request, *args, **kwargs):
-        serializer = RegistroSerializer(data=request.data)
+    parser_classes = (MultiPartParser, FormParser)
 
-        if serializer.is_valid():
-            user = serializer.save()
+    def perform_create(self, serializer):
+        serializer.save()
 
-            # Generar el token de autenticación para el nuevo usuario
-            token = Token.objects.create(user=user)
-
-            # Devolvemos el token y los datos del usuario (user_id y username)
-            return Response({
-                "message": "Usuario creado con éxito",
-                "usuario": {
-                    "username": user.username,
-                    "email": user.email,
-                    "user_id": user.id
-                },
-                "token": token.key  # Este es el token que se usará para las peticiones futuras
-            }, status=status.HTTP_201_CREATED)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class LoginUsuarioView(APIView):
-    permission_classes = [AllowAny]
-    authentication_classes = [TokenAuthentication]  # Si es necesario para la autenticación
-
-    def post(self, request):
-        email = request.data.get('email')
-        password = request.data.get('password')
-
-        if not email or not password:
-            return Response({'detail': 'Email y contraseña son requeridos.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Autenticación usando email y password
-        user = authenticate(request, username=email, password=password)
-
-        if user is not None:
-            # El usuario se autentica correctamente
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({
-                'token': token.key,
-                'user_id': user.id,
-                'username': user.username
-            }, status=status.HTTP_200_OK)
-
-        return Response({'detail': 'Credenciales incorrectas.'}, status=status.HTTP_400_BAD_REQUEST)
 
 # OPENAI
 from django.http import JsonResponse
@@ -254,7 +287,7 @@ import re
 from .models import Producto, Categoria, SubCategoria, Etiqueta, Pedido, DetallePedido, GrupoCategoria
 from datetime import datetime
 # API key de OpenAI
-api_key = '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'
+api_key = ''
 os.environ['OPENAI_API_KEY'] = api_key
 cliente_openai = OpenAI()
 

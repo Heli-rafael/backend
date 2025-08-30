@@ -187,6 +187,7 @@ class DetallePago(models.Model):
     expiry_m = models.CharField(max_length=2, blank=True, null=True)
     expiry_a = models.CharField(max_length=2, blank=True, null=True)
     cvv = models.CharField(max_length=4, blank=True, null=True)
+    voucher = models.FileField(upload_to='vouchers/', blank=True, null=True)
 
     def __str__(self):
         return f"Pago de {self.pedido}"
@@ -198,4 +199,34 @@ class Favoritos(models.Model):
     
     def __str__(self):
         return f"Favoritos de {self.usuario}"
+    
 
+from django.utils import timezone
+
+class Promocion(models.Model):
+    titulo = models.CharField(max_length=255)
+    descripcion = models.TextField(blank=True, null=True)
+    fechaInicio = models.DateTimeField()
+    fechaFin = models.DateTimeField()
+    imagen = models.ImageField(upload_to='promociones/')
+
+    idproducto = models.ForeignKey(Producto, related_name='promociones', on_delete=models.CASCADE)
+    precioPromocion = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+    def __str__(self):
+        return self.titulo
+
+    def esta_activa(self):
+        """ Método para verificar si la promoción está activa en base a la fecha actual """
+        ahora = timezone.now()
+        return self.fechaInicio <= ahora <= self.fechaFin
+
+class Prueba(models.Model):
+    imagen = models.ImageField(upload_to='pruebas/', null=True, blank=True)  # Permite valores nulos y vacíos
+    nombre = models.CharField(max_length=100, null=True, blank=True)  # Permite valores nulos y vacíos
+    apellido = models.CharField(max_length=100, null=True, blank=True)  # Permite valores nulos y vacíos
+    tipo = models.CharField(max_length=50, null=True, blank=True)  # Permite valores nulos y vacíos
+    fechaderegistro = models.DateField(null=True, blank=True)  # Permite valores nulos y vacíos si no se especifica
+
+    def __str__(self):
+        return f"Prueba {self.nombre} {self.apellido}"

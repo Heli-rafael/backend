@@ -9,13 +9,24 @@ class APIKeyMiddleware:
             '/api/productos/',
             '/api/grupo-categorias/',
             '/api/categorias/',
+            '/api/subcategorias/',
+
             '/api/etiquetas/',
             '/media/productos/',
+
             '/api/departamentos/',
             '/api/provincias/',
             '/api/distritos/',
-            '/api/clientes/',
 
+            '/api/clientes/',
+            '/api/favoritos/',
+            '/api/api_openai/',
+            '/api/registro/',
+            '/api/pedidos/',
+            '/api/promociones/',
+
+            '/api/registro',
+            '/api/pedidos',
             '/api/productos',
             '/api/categorias',
             '/media/productos'
