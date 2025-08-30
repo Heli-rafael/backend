@@ -1,42 +1,41 @@
+from datetime import datetime
+import json
+import os
+import re
+
+from django.http import JsonResponse
+from django.utils import timezone
+
+from rest_framework import viewsets, status, filters
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.decorators import (
+    api_view, action, authentication_classes, permission_classes
+)
+
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
-from rest_framework.decorators import api_view
-from rest_framework.authentication import TokenAuthentication
+
 
 from . import models
 from . import serializers
 
-from rest_framework import viewsets, status, filters
-from rest_framework.response import Response
-from rest_framework.decorators import api_view
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from openai import OpenAI
 
-from .models import (
-    Departamento, Provincia, Distrito,
-    Categoria, Producto,
-    Cliente, Pedido, DetallePedido, GrupoCategoria, SubCategoria, Etiqueta, Favoritos,Promocion
-)
+from .permissions import SoloLecturaOAdministrador
 
-from .serializers import (
-    DepartamentoSerializer, ProvinciaSerializer, DistritoSerializer,
-    CategoriaSerializer, ProductoSerializer,
-    ClienteSerializer, PedidoSerializer, EtiquetaSerializer, GrupoCategoriaSerializer, SubCategoriaSerializer, 
-    FavoritosSerializer, PromocionSerializer
-)
 
-from rest_framework import viewsets
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
-from .models import Favoritos
 
 class FavoritosViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         try:
-            return Favoritos.objects.filter(usuario=self.request.user)
-        except Favoritos.DoesNotExist:
+            return models.Favoritos.objects.filter(usuario=self.request.user)
+        except models.Favoritos.DoesNotExist:
             return []
 
     def list(self, request):
@@ -54,7 +53,7 @@ class FavoritosViewSet(viewsets.ViewSet):
             return Response({'error': 'El id del producto es requerido'}, status=400)
 
         try:
-            favoritos, created = Favoritos.objects.get_or_create(usuario=request.user)
+            favoritos, created = models.Favoritos.objects.get_or_create(usuario=request.user)
             if producto_id not in favoritos.idsProductos:
                 favoritos.idsProductos.append(producto_id)
                 favoritos.save()
@@ -71,20 +70,22 @@ class FavoritosViewSet(viewsets.ViewSet):
             return Response({'error': 'El id del producto es requerido'}, status=400)
 
         try:
-            favoritos = Favoritos.objects.get(usuario=request.user)
+            favoritos = models.Favoritos.objects.get(usuario=request.user)
             if producto_id in favoritos.idsProductos:
                 favoritos.idsProductos.remove(producto_id)
                 favoritos.save()
                 return Response({'favoritos': favoritos.idsProductos}, status=200)
             else:
                 return Response({'error': 'Producto no encontrado en favoritos'}, status=400)
-        except Favoritos.DoesNotExist:
+        except models.Favoritos.DoesNotExist:
             return Response({'error': 'Favoritos no encontrados para este usuario'}, status=400)
 
 # Usuario
 class UsuarioViewset(viewsets.ModelViewSet):
     queryset = models.Usuario.objects.all()
     serializer_class = serializers.UsuarioSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
 
 from django.contrib.auth import get_user_model
@@ -120,7 +121,7 @@ class CustomAuthToken(ObtainAuthToken):
 @api_view(['POST'])
 def realizar_pedido(request):
     if request.method == 'POST':
-        serializer = PedidoSerializer(data=request.data)
+        serializer = serializers.PedidoSerializer(data=request.data)
         
         if serializer.is_valid():
             pedido = serializer.save()
@@ -130,98 +131,97 @@ def realizar_pedido(request):
 
 # Departamento, provincias y distritos
 class DepartamentoViewSet(viewsets.ModelViewSet):
-    queryset = Departamento.objects.all()
-    serializer_class = DepartamentoSerializer
-    permission_classes = [AllowAny]
-    authentication_classes =[]
+    queryset = models.Departamento.objects.all()
+    serializer_class = serializers.DepartamentoSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
+
 
 class ProvinciaViewSet(viewsets.ModelViewSet):
-    queryset = Provincia.objects.all()
-    serializer_class = ProvinciaSerializer
-    permission_classes = [AllowAny]
-    authentication_classes =[]
+    queryset = models.Provincia.objects.all()
+    serializer_class = serializers.ProvinciaSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
+
 
 class DistritoViewSet(viewsets.ModelViewSet):
-    queryset = Distrito.objects.all()
-    serializer_class = DistritoSerializer
-    permission_classes = [AllowAny]
-    authentication_classes =[]
+    queryset = models.Distrito.objects.all()
+    serializer_class = serializers.DistritoSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
+
 
 class EtiquetaViewSet(viewsets.ModelViewSet):
-    queryset = Etiqueta.objects.all()
-    serializer_class = EtiquetaSerializer
-    permission_classes = [AllowAny]
-    authentication_classes =[]
+    queryset = models.Etiqueta.objects.all()
+    serializer_class = serializers.EtiquetaSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
+
 
 class GrupoCategoriaViewSet(viewsets.ModelViewSet):
-    queryset = GrupoCategoria.objects.all()
-    serializer_class = GrupoCategoriaSerializer
-    permission_classes = [AllowAny]
-    authentication_classes =[]
+    queryset = models.GrupoCategoria.objects.all()
+    serializer_class = serializers.GrupoCategoriaSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
+
 
 class CategoriaViewSet(viewsets.ModelViewSet):
-    queryset = Categoria.objects.all()
-    serializer_class = CategoriaSerializer
-    permission_classes = [AllowAny]
-    authentication_classes =[]
+    queryset = models.Categoria.objects.all()
+    serializer_class = serializers.CategoriaSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
+
 
 
 class SubCategoriaViewSet(viewsets.ModelViewSet):
-    queryset = SubCategoria.objects.all()
-    serializer_class = SubCategoriaSerializer
-    permission_classes = [AllowAny]
-    authentication_classes =[]
+    queryset = models.SubCategoria.objects.all()
+    serializer_class = serializers.SubCategoriaSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
+
 
 class ProductoViewSet(viewsets.ModelViewSet):
-    queryset = Producto.objects.all()
-    serializer_class = ProductoSerializer
+    queryset = models.Producto.objects.all()
+    serializer_class = serializers.ProductoSerializer
     #Filtro de nombre
     filter_backends = [filters.SearchFilter]
     search_fields = ['nombre']
-    permission_classes = [AllowAny]
-    authentication_classes =[]
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
+
 
 class ClienteViewSet(viewsets.ModelViewSet):
-    queryset = Cliente.objects.all()  # necesario para el router
-    serializer_class = ClienteSerializer
+    queryset = models.Cliente.objects.all()  # necesario para el router
+    serializer_class = serializers.ClienteSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [TokenAuthentication]
 
     def get_queryset(self):
-        # filtrar para que solo vea los clientes del usuario autenticado
-        return Cliente.objects.filter(usuario=self.request.user)
+        user = self.request.user
+        if user.is_superuser or user.is_staff:
+            return models.Cliente.objects.all()
+        return models.Cliente.objects.filter(usuario=user)
     
-
-
-from django.utils import timezone
+# Promocion
 class PromocionViewSet(viewsets.ModelViewSet):
-    queryset = Promocion.objects.all()
-    serializer_class = PromocionSerializer
-    permission_classes = [IsAuthenticated]
-    permission_classes = []
+    queryset = models.Promocion.objects.all()
+    serializer_class = serializers.PromocionSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
 
     # Obtener todas las promociones
     def get_queryset(self):
-        return Promocion.objects.all()
+        return models.Promocion.objects.all()
 
     # Acción personalizada para obtener las promociones vigentes
     @action(detail=False, methods=['get'], url_path='vigentes')
     def promociones_vigentes(self, request):
         """ Endpoint para obtener solo las promociones activas """
-        promociones_activas = Promocion.objects.filter(fechaInicio__lte=timezone.now(), fechaFin__gte=timezone.now())
+        promociones_activas = models.Promocion.objects.filter(fechaInicio__lte=timezone.now(), fechaFin__gte=timezone.now())
         serializer = self.get_serializer(promociones_activas, many=True)
         return Response(serializer.data)
     
-import json
-from rest_framework import viewsets, status
-from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.views import APIView
-
-from .models import Pedido
-from .serializers import PedidoSerializer
+# Pedido
 class PedidoCreateView(APIView):
     def post(self, request, *args, **kwargs):
         pedido_data = request.data.get("pedido")
@@ -231,21 +231,29 @@ class PedidoCreateView(APIView):
             import json
             pedido_data = json.loads(pedido_data)
 
-        serializer = PedidoSerializer(data=pedido_data)
+        serializer = serializers.PedidoSerializer(data=pedido_data)
         if serializer.is_valid():
             pedido = serializer.save()
             if voucher:
                 pedido.voucher = voucher
                 pedido.save()
-            return Response(PedidoSerializer(pedido).data, status=201)
+            return Response(serializers.PedidoSerializer(pedido).data, status=201)
         return Response(serializer.errors, status=400)
     
 class PedidoViewSet(viewsets.ModelViewSet):
-    queryset = Pedido.objects.all()
-    serializer_class = PedidoSerializer
+    queryset = models.Pedido.objects.all()
+    serializer_class = serializers.PedidoSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [TokenAuthentication]
     parser_classes = (MultiPartParser, FormParser, JSONParser)
+
+    def get_queryset(self):
+        user = self.request.user
+        # Si es superusuario, ve todos los pedidos
+        if user.is_superuser or user.is_staff:
+            return models.Pedido.objects.all()
+        # Si es usuario común, filtra por su cliente
+        return models.Pedido.objects.filter(cliente__usuario=user)
 
     def create(self, request, *args, **kwargs):
         """
@@ -282,12 +290,10 @@ class PedidoViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 class PruebaView(viewsets.ModelViewSet):
-
     queryset = models.Prueba.objects.all()
     serializer_class = serializers.PruebaSerializer
-    permission_classes = [IsAuthenticated]  # Exigir autenticación
-    authentication_classes = [TokenAuthentication]  # Usar token auth
-    permission_classes = []
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [SoloLecturaOAdministrador]
 
     parser_classes = (MultiPartParser, FormParser)
 
@@ -296,15 +302,7 @@ class PruebaView(viewsets.ModelViewSet):
 
 
 # OPENAI
-from django.http import JsonResponse
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
-from openai import OpenAI
-import os
-import re
-from .models import Producto, Categoria, SubCategoria, Etiqueta, Pedido, DetallePedido, GrupoCategoria
-from datetime import datetime
+
 # API key de OpenAI
 api_key = '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'
 os.environ['OPENAI_API_KEY'] = api_key
@@ -330,7 +328,7 @@ def api_openai(request):
 
     try:
         # Obtener los pedidos del usuario autenticado
-        pedidos = Pedido.objects.filter(cliente__usuario=user)  # Obtener los pedidos del usuario
+        pedidos = models.Pedido.objects.filter(cliente__usuario=user)  # Obtener los pedidos del usuario
 
         # Buscar si en la pregunta se menciona algún idPedido
         import re
@@ -357,7 +355,7 @@ def api_openai(request):
 
         # Si no se encuentra un idPedido en la pregunta, proceder con la lógica de contexto normal
         clientes = user.clientes.all()  # Obtener los clientes del usuario
-        productos_comprados = DetallePedido.objects.filter(pedido__cliente__usuario=user)  # Productos comprados
+        productos_comprados = models.DetallePedido.objects.filter(pedido__cliente__usuario=user)  # Productos comprados
 
         # Construir el contexto con la información relacionada
         contexto = f"Usuario: {user.username}\n"
@@ -365,11 +363,11 @@ def api_openai(request):
         contexto += "Productos comprados: " + ", ".join([f"{producto.producto.nombre} x {producto.cantidad}" for producto in productos_comprados]) + "\n"
 
         # Crear el contexto con categorías, subcategorías y productos (igual que antes)
-        grupos_categoria = GrupoCategoria.objects.all()
-        categorias = Categoria.objects.all()
-        subcategorias = SubCategoria.objects.all()
-        productos = Producto.objects.all()
-        etiquetas = Etiqueta.objects.all()
+        grupos_categoria = models.GrupoCategoria.objects.all()
+        categorias = models.Categoria.objects.all()
+        subcategorias = models.SubCategoria.objects.all()
+        productos = models.Producto.objects.all()
+        etiquetas = models.Etiqueta.objects.all()
 
         contexto += "\nContexto de Productos y Categorías:\n"
         contexto += "Grupos de Categorías: " + ", ".join([grupo.nombre for grupo in grupos_categoria]) + "\n"

@@ -25,11 +25,8 @@ class APIKeyMiddleware:
             '/api/pedidos/',
             '/api/promociones/',
 
-            '/api/registro',
-            '/api/pedidos',
-            '/api/productos',
-            '/api/categorias',
-            '/media/productos'
+            '/media/productos/',
+            '/media/promociones/',
         ]
 
     def __call__(self,request):

@@ -2,69 +2,54 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework.exceptions import ValidationError
 
-from .models import (
-    Departamento, Provincia, Distrito,
-    Categoria, Producto,
-    Cliente, Pedido, DetallePedido,
-    DetalleEnvio, DetallePago, Etiqueta, GrupoCategoria, SubCategoria, Favoritos
-)
+from django.utils import timezone
+
 from . import models
 
 User = get_user_model()
 
 class DepartamentoSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Departamento
+        model = models.Departamento
         fields = '__all__'
 
 class ProvinciaSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Provincia
+        model = models.Provincia
         fields = '__all__'
 
 class DistritoSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Distrito
+        model = models.Distrito
         fields = '__all__'
 
 class EtiquetaSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Etiqueta
+        model = models.Etiqueta
         fields = '__all__'
 
 class GrupoCategoriaSerializer(serializers.ModelSerializer):
     class Meta:
-        model = GrupoCategoria
+        model = models.GrupoCategoria
         fields = '__all__'
 
 class CategoriaSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Categoria
+        model = models.Categoria
         fields = '__all__'
 
 class SubCategoriaSerializer(serializers.ModelSerializer):
     class Meta:
-        model = SubCategoria
+        model = models.SubCategoria
         fields = '__all__'
 
 class ProductoSerializer(serializers.ModelSerializer):
     precio = serializers.FloatField()
     class Meta:
-        model = Producto
+        model = models.Producto
         fields = '__all__'
 
-from django.utils import timezone
-
-def ObtenerPrecio(producto):
-    ahora = timezone.now()
-    promocion = producto.promociones.filter(fechaInicio__lte=ahora, fechaFin__gte=ahora).first()
-    
-    # Validamos que el precio de la promoción sea menor que el precio original
-    if promocion and 0 < promocion.precioPromocion < producto.precio:
-        return promocion.precioPromocion
-    return producto.precio
-
-#USUARIO
+# Usuario
 class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Usuario
@@ -81,26 +66,38 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
 class FavoritosSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Favoritos
+        model = models.Favoritos
         fields = ['usuario', 'idsProductos']
+
 class PromocionSerializer(serializers.ModelSerializer):
     precioPromocion = serializers.FloatField()
     class Meta:
         model = models.Promocion
         fields = "__all__"
 
-# serializers.py
+class ClienteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Cliente
+        fields = ['nombres', 'apellidos', 'dni', 'gmail', 'telefono']
+
+class PruebaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Prueba
+        fields = "__all__"
+
+# Partes de Pedido
+
 class DetallePedidoSerializer(serializers.ModelSerializer):
     # producto como PK (id)
-    producto = serializers.PrimaryKeyRelatedField(queryset=Producto.objects.all())
+    producto = serializers.PrimaryKeyRelatedField(queryset=models.Producto.objects.all())
 
     class Meta:
-        model = DetallePedido
+        model = models.DetallePedido
         fields = ['producto', 'cantidad', 'precio_unitario']  # aceptamos el campo, pero lo recalculamos
 
 class DetalleEnvioSerializer(serializers.ModelSerializer):
     class Meta:
-        model = DetalleEnvio
+        model = models.DetalleEnvio
         fields = [
             'tipo', 'departamento', 'provincia', 'distrito', 'referencia',
             'direccion', 'postal_code', 'fecha'
@@ -110,14 +107,20 @@ class DetallePagoSerializer(serializers.ModelSerializer):
     voucher = serializers.FileField(required=False, allow_null=True)
 
     class Meta:
-        model = DetallePago
+        model = models.DetallePago
         fields = ['tipo', 'card_number', 'expiry_m', 'expiry_a', 'cvv', 'voucher']
 
-class ClienteSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Cliente
-        fields = ['nombres', 'apellidos', 'dni', 'gmail', 'telefono']
+# Precio Promocion
+def ObtenerPrecio(producto):
+    ahora = timezone.now()
+    promocion = producto.promociones.filter(fechaInicio__lte=ahora, fechaFin__gte=ahora).first()
+    
+    # Validamos que el precio de la promoción sea menor que el precio original
+    if promocion and 0 < promocion.precioPromocion < producto.precio:
+        return promocion.precioPromocion
+    return producto.precio
 
+# Pedido
 class PedidoSerializer(serializers.ModelSerializer):
     cliente = ClienteSerializer()
     detalle_envio = DetalleEnvioSerializer()
@@ -131,7 +134,7 @@ class PedidoSerializer(serializers.ModelSerializer):
     idPedido = serializers.CharField(read_only=True)
 
     class Meta:
-        model = Pedido
+        model = models.Pedido
         fields = [
             'idPedido', 'usuario_id', 'cliente', 'total',
             'detalle_pedido', 'detalle_envio', 'detalle_pago',
@@ -153,7 +156,7 @@ class PedidoSerializer(serializers.ModelSerializer):
 
         # Crear/actualizar cliente por DNI + usuario
         dni = cliente_data.get('dni')
-        cliente, creado = Cliente.objects.get_or_create(
+        cliente, creado = models.Cliente.objects.get_or_create(
             dni=dni,
             usuario=usuario,
             defaults=cliente_data
@@ -164,13 +167,13 @@ class PedidoSerializer(serializers.ModelSerializer):
             cliente.save()
 
         # Crear pedido
-        pedido = Pedido.objects.create(cliente=cliente, total=validated_data.get('total', 0))
+        pedido = models.Pedido.objects.create(cliente=cliente, total=validated_data.get('total', 0))
 
         # Envío
-        DetalleEnvio.objects.create(pedido=pedido, **detalle_envio_data)
+        models.DetalleEnvio.objects.create(pedido=pedido, **detalle_envio_data)
 
         # Pago (si trae voucher, lo guardamos)
-        DetallePago.objects.create(pedido=pedido, **detalle_pago_data)
+        models.DetallePago.objects.create(pedido=pedido, **detalle_pago_data)
 
         # Detalle de productos (recalcular total con precio actual en servidor)
         total_pedido = 0
@@ -188,7 +191,7 @@ class PedidoSerializer(serializers.ModelSerializer):
             # calcular precio vigente (ignorar precio_unitario enviado)
             precio_con_descuento = ObtenerPrecio(producto)
 
-            DetallePedido.objects.create(
+            models.DetallePedido.objects.create(
                 pedido=pedido,
                 producto=producto,
                 cantidad=cantidad,
@@ -202,10 +205,4 @@ class PedidoSerializer(serializers.ModelSerializer):
         pedido.save()
 
         return pedido
-
-
-
-class PruebaSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = models.Prueba
-        fields = "__all__"
+    
