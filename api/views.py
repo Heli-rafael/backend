@@ -201,7 +201,28 @@ class ClienteViewSet(viewsets.ModelViewSet):
         if user.is_superuser or user.is_staff:
             return models.Cliente.objects.all()
         return models.Cliente.objects.filter(usuario=user)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@authentication_classes([])
+def registrarUsuario(request):
+    serializer = serializers.UsuarioSerializer(data=request.data)
     
+    if serializer.is_valid():
+        usuario = serializer.save()
+        token = Token.objects.create(user=usuario)
+        return Response({
+            'token': token.key,
+            'usuario': {
+                'user_id': usuario.id,
+                'username': usuario.username,
+                'email': usuario.email
+            }
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 # Promocion
 class PromocionViewSet(viewsets.ModelViewSet):
     queryset = models.Promocion.objects.all()

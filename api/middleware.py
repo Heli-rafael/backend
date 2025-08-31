@@ -21,12 +21,14 @@ class APIKeyMiddleware:
             '/api/clientes/',
             '/api/favoritos/',
             '/api/api_openai/',
-            '/api/registro/',
+            '/api/registrar/',
             '/api/pedidos/',
             '/api/promociones/',
 
             '/media/productos/',
             '/media/promociones/',
+            '/media/qr/',
+            '/media/vouchers/',
         ]
 
     def __call__(self,request):

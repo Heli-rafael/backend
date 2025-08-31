@@ -39,4 +39,5 @@ urlpatterns = [
     path('token-auth/', views.CustomAuthToken.as_view(), name='token-auth'),
     path('realizar_pedido/', views.realizar_pedido, name='realizar_pedido'),
     path('api_openai/', views.api_openai, name='api_openai'),
+    path('registrar/',views.registrarUsuario),
 ]
